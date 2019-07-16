@@ -1,11 +1,13 @@
 ﻿
 function createNewComp(sourceComp, templateComp, scaleFactor) {
     var newComp = sourceComp.duplicate();
-    newComp.name = sourceComp.name.substring(1) + templateComp.name.split(":")[2];
+    newComp.name = sourceComp.name.split(":")[2] + templateComp.name.split(":")[2];
     
     newComp.duration = sourceComp.duration * scaleFactor;
     newComp.workAreaStart = sourceComp.workAreaStart * scaleFactor;
     newComp.workAreaDuration = sourceComp.workAreaDuration * scaleFactor;
+    
+    newComp.frameRate = templateComp.frameRate;
     
     var newAVLayerEffects = [];    
     
@@ -13,8 +15,8 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
         var layer = newComp.layers[i];
         if (layer instanceof AVLayer) {
             layer.inPoint = layer.inPoint * scaleFactor;
-            layer.outPoint = layer.outPoint * scaleFactor;
             layer.startTime = layer.startTime * scaleFactor;
+            layer.outPoint = layer.outPoint * scaleFactor;
             var effectsGroup = layer.property("Effects");
             newAVLayerEffects.push(effectsGroup);
         }
@@ -57,14 +59,24 @@ for (var i = 1; i <= projItems.length; i++) {
         if (item.name.indexOf('_template:') == 0) {
             var templateId = item.name.split(":")[1];
             templateComps[templateId] = item;
-        } else if (item.name.indexOf('[oarstack]') >= 0) {
-            itemsToRemove.push(item);
+        } else if (item.name.indexOf('_') == 0) {
+            
         } else if (item.name.indexOf('Input Comp') >= 0) {
             
-        } else if (item.name.indexOf('#') >= 0) {
-            
-        } else {
+        } else if (item.name.indexOf('::') == 3) {        
+            //for (var j = 1; j <= item.layers.length; j++) {
+            //    item.workAreaDuration = item.workAreaDuration / 2;
+            //    var layer = item.layers[j];
+            //    var scaleFactor = 1.0;
+            //    if (layer instanceof AVLayer) {
+                   //layer.inPoint = layer.inPoint * scaleFactor;
+                   //layer.outPoint = layer.outPoint * scaleFactor;
+                   //layer.startTime = layer.startTime * scaleFactor;
+            //    }
+            //}
             sourceComps[item.name] = item;
+        } else {
+            itemsToRemove.push(item);
         }
     }
 }
@@ -76,5 +88,6 @@ for (var i = 0; i < itemsToRemove.length; i++) {
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
     var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1);
+    var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2);
     var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8);
 }
