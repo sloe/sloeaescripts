@@ -6,20 +6,57 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
     newComp.duration = sourceComp.duration * scaleFactor;
     newComp.workAreaStart = sourceComp.workAreaStart * scaleFactor;
     newComp.workAreaDuration = sourceComp.workAreaDuration * scaleFactor;
+    var newWorkAreaEnd = newComp.workAreaStart + newComp.workAreaDuration;
     
     newComp.frameRate = templateComp.frameRate;
     
-    var newAVLayerEffects = [];    
+    var newAVLayerEffects = [];
     
+    // Remove and duplicate layers
+    for (var i = newComp.layers.length; i >= 1; i--) {
+        newComp.layers[i].remove();
+    }
+
+    for (var i = sourceComp.layers.length; i >= 1; i--) {
+        sourceComp.layers[i].copyToComp(newComp);
+    }
+
     for (var i = 1; i <= newComp.layers.length; i++) {
-        var layer = newComp.layers[i];
-        if (layer instanceof AVLayer) {
-            layer.inPoint = layer.inPoint * scaleFactor;
-            layer.startTime = layer.startTime * scaleFactor;
-            layer.outPoint = layer.outPoint * scaleFactor;
-            var effectsGroup = layer.property("Effects");
+        var newLayer = newComp.layers[i];
+        var sourceLayer = sourceComp.layers[i];
+        // $.writeln("Orig: "+sourceComp.name+">"+templateComp.name.split(":")[1]+
+        //     "["+i+"]: inPoint "+sourceLayer.inPoint+" outPoint "+sourceLayer.outPoint+
+        //     " startTime "+sourceLayer.startTime);
+
+        if (newLayer instanceof AVLayer) {
+            // startTime must be changed first, since it moves inPoint and outPoint when it's changed
+            newLayer.startTime = sourceLayer.startTime * scaleFactor;
+
+            // The values inPoint and outPoint take will be trimmed to the size of the Comp
+            newLayer.inPoint = Math.max(sourceLayer.inPoint * scaleFactor, newComp.workAreaStart);
+            newLayer.outPoint = Math.min(sourceLayer.outPoint * scaleFactor, 10800, newWorkAreaEnd);
+
+            // Trim overlap from hidden Comps to prevent multiple computation
+            for (var j = 1; j < newComp.layers.length; j++) {
+                frontLayer = newComp.layers[j];
+                if ((newLayer.inPoint > frontLayer.inPoint) && (newLayer.inPoint < frontLayer.outPoint)) {
+                    // frontLayer hides the start of the new Comp
+                    newLayer.inPoint = frontLayer.outPoint;
+                }
+                if ((newLayer.inPoint < frontLayer.inPoint) && (newLayer.outPoint > frontLayer.inPoint)) {
+                    // frontLayer hides the end of the new Comp
+                    newLayer.outPoint = frontLayer.inPoint;
+                }
+            }
+
+            var effectsGroup = newLayer.property("Effects");
             newAVLayerEffects.push(effectsGroup);
+        } else {
+            // $.writeln("Layer not AVLayer");
         }
+        // $.writeln("New: "+sourceComp.name+">"+templateComp.name.split(":")[1]+
+        //     "["+i+"]*"+scaleFactor+": inPoint "+newLayer.inPoint+" outPoint "+newLayer.outPoint+
+        //     " startTime "+newLayer.startTime);
     }
 
     for (var i = 1; i <= templateComp.layers.length; i++) {
@@ -32,10 +69,22 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
                 var newEffect = destGroup.addProperty(templateEffect.name);
                 for (var l = 1; l <= templateEffect.numProperties; ++l) {
                     var templateProp = templateEffect.property(l);
-                    if (templateProp instanceof Property) {
-                        if (templateProp.propertyValueType !== PropertyValueType.NO_VALUE) {
+                    if (templateProp.name == "Compositing Options") {
+                        // $.writeln("Not duplicating Compositing Options");
+                    } else if (templateProp instanceof Property) {
+                        if (templateProp.name === "Color Source") {
+                            // $.writeln("Overriding Color Source to " + (k+1));
+                            newEffect[templateProp.name].setValue(k+1);
+                            // $.writeln(i+" "+j+" "+k+" "+l+" Added property "+templateProp.name+" to "+newEffect.name+" value "+templateProp.value+"="+newEffect[templateProp.name].value);
+                        } else if (templateProp.propertyValueType !== PropertyValueType.NO_VALUE) {
                             newEffect[templateProp.name].setValue(templateProp.value);
+                            var newProp = newEffect[templateProp.name];
+                            // $.writeln(i+" "+j+" "+k+" "+l+" Added property "+templateProp.name+" to "+newEffect.name+" value "+templateProp.value+"="+newEffect[templateProp.name].value);
+                        } else {
+                            // $.writeln("Skipped no value property '"+templateProp.name+"' for "+newEffect.name);
                         }
+                    } else {
+                        // $.writeln("Unknown property type: "+templateProp.type);
                     }
                 }
             }
@@ -64,16 +113,6 @@ for (var i = 1; i <= projItems.length; i++) {
         } else if (item.name.indexOf('Input Comp') >= 0) {
             
         } else if (item.name.indexOf('::') == 3) {        
-            //for (var j = 1; j <= item.layers.length; j++) {
-            //    item.workAreaDuration = item.workAreaDuration / 2;
-            //    var layer = item.layers[j];
-            //    var scaleFactor = 1.0;
-            //    if (layer instanceof AVLayer) {
-                   //layer.inPoint = layer.inPoint * scaleFactor;
-                   //layer.outPoint = layer.outPoint * scaleFactor;
-                   //layer.startTime = layer.startTime * scaleFactor;
-            //    }
-            //}
             sourceComps[item.name] = item;
         } else {
             itemsToRemove.push(item);
@@ -81,13 +120,18 @@ for (var i = 1; i <= projItems.length; i++) {
     }
 }
 
+app.beginUndoGroup("oarstackDelete")
 for (var i = 0; i < itemsToRemove.length; i++) {
     itemsToRemove[i].remove();
 }
+app.endUndoGroup();
 
+app.beginUndoGroup("oarstackCreate")
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
     var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1);
     var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2);
     var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8);
 }
+app.endUndoGroup();
+0;
