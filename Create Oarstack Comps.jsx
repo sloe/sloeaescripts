@@ -4,40 +4,62 @@
 var rateLimitLow = 15;
 var rateLimitHigh = 50;
 
-function rateFromMarkers(markers) {
+function rateFromMarkers(inPoint, markers) {
     if (markers.numKeys < 2) {
         $.writeln("Logic error in rateFromMarkers"); // Shouldn't be called with less than 2
         return 99;
     }
+    
     var rates = [];
+    
     for (var i = 1; i <= markers.numKeys - 1; i++) {
         var startTime = markers.keyTime(i);
         var endTime = markers.keyTime(i + 1);
         if (startTime === endTime) {
             $.writeln("Skipping duplicate markers");
         } else {
-            var rate = 60.0 / (endTime - startTime);
-            if (rate < rateLimitLow || rate > rateLimitHigh) {
-                $.writeln("Skipping out of range rate: " + rate);
+            var spotRate = 60.0 / (endTime - startTime);
+            if (spotRate < rateLimitLow || spotRate > rateLimitHigh) {
+                $.writeln("Skipping out of range spot rate: " + spotRate);
             } else {
-                rates.push(rate);
+                var avgRate = spotRate;
+                for (var i = 0; i < rates.length; i++) {
+                    avgRate += rates[i].spotRate;
+                }
+                avgRate = avgRate / (rates.length + 1);
+                rates.push({
+                    avgRate: avgRate,
+                    spotRate: spotRate,
+                    inPoint: inPoint,
+                    time: endTime // The time we know what the rate is
+                })
             }
-            $.writeln("Rate: " + rate);
+            // $.writeln("Rate: " + spotRate);
         }
     }
-    if (rates.length < 1) {
-        $.writeln("Not enough valid markers to calculate rate");
-        return 99;
-    }
-    var avg_rate = 0;
-    for (var i = 0; i < rates.length; i++) {
-        avg_rate += rates[i];
-    }
-    avg_rate /= rates.length;
-    return avg_rate;
+
+    return rates;
 }
 
-function createNewComp(sourceComp, templateComp, scaleFactor) {
+function calculateRates(sourceComp) {
+    const strokeRates = [];
+    if (sourceComp.markerProperty.numKeys > 1) {
+        strokeRates = strokeRates.concat(rateFromMarkers(0.0, sourceComp.markerProperty));
+    }
+
+    for (var i = 1; i <= sourceComp.layers.length; i++) {
+        var sourceLayer = sourceComp.layers[i];
+        
+        if (sourceLayer instanceof AVLayer) {
+            if (sourceLayer.marker.numKeys > 1) {
+                strokeRates = strokeRates.concat(rateFromMarkers(sourceLayer.inPoint, sourceLayer.marker));
+            }
+        }
+    }
+    return strokeRates;
+}
+
+function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
     var newComp = sourceComp.duplicate();
     newComp.name = sourceComp.name.split(":")[2] + templateComp.name.split(":")[2];
     
@@ -57,13 +79,6 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
 
     for (var i = sourceComp.layers.length; i >= 1; i--) {
         sourceComp.layers[i].copyToComp(newComp);
-    }
-
-    var strokeRates = [];
-    var strokeRateTimes = [];
-    if (sourceComp.markerProperty.numKeys > 1) {
-        strokeRates.push(rateFromMarkers(sourceComp.markerProperty));
-        strokeRateTimes.push(0.0);
     }
 
     for (var i = 1; i <= newComp.layers.length; i++) {
@@ -101,11 +116,6 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
 
             var effectsGroup = newLayer.property("Effects");
             newAVLayerEffects.push(effectsGroup);
-
-            if (sourceLayer.marker.numKeys > 1) {
-                strokeRates.push(rateFromMarkers(sourceLayer.marker));
-                strokeRateTimes.push(newLayer.inPoint);
-            }
         } else {
             // $.writeln("Layer not AVLayer");
         }
@@ -146,8 +156,40 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
         }
     }
 
+    for (var i = 1; i <= templateComp.layers.length; i++) {
+        var templateLayer = templateComp.layers[i];
+        if (templateLayer instanceof TextLayer) {
+            templateLayer.copyToComp(newComp);
+            var newLayer = newComp.layer(1);
+            var sourceText = newLayer.text.sourceText;
+            if (newLayer.name === "text_rate") {
+                if (strokeRates.length == 0) {
+                    newLayer.enabled = false;
+                } else {
+                    newLayer.text.sourceText.setValueAtTime(0.0, strokeRates[strokeRates.length - 1].avgRate.toFixed(2));
+                }
+            } else if (newLayer.name === "text_rate_subtitle") {
+                if (strokeRates.length == 0) {
+                    newLayer.enabled = false;
+                } else {
+                    for (var j = 0; j < strokeRates.length; j++) {
+                        var time = strokeRates[j].time
+                        newLayer.text.sourceText.setValueAtTime(time, "Average " + strokeRates[j].avgRate.toFixed(2) + " from " + j + " stroke" + (j === 1 ? "" : "s"));
+                    }
+                }
+            } 
+        } else {
+            if (medals[sourceComp.name].indexOf(templateLayer.name) >= 0) {   
+                templateLayer.copyToComp(newComp);
+                $.writeln("Copied layer " + templateLayer.name + " in Comp " + newComp.name);
+            }
+        }
+    }
+
     if (strokeRates.length > 0) {
-        $.writeln("Stroke rates for " + newComp.name + " = " + strokeRates.join(", ") + ", times = " + strokeRateTimes.join(", "));
+        $.writeln("Stroke rates for " + newComp.name + " = " + strokeRates.map(function(x) {return x.spotRate}).join(", "));
+    } else {
+        $.writeln("Missing or faulty rate markers for " + newComp.name);
     }
     return newComp;
 }
@@ -185,11 +227,35 @@ for (var i = 0; i < itemsToRemove.length; i++) {
 app.endUndoGroup();
 
 app.beginUndoGroup("oarstackCreate")
+medals = {};
+
+var rateArray = [];
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
-    var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1);
-    var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2);
-    var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8);
+    medals[sourceComp.name] = [];
+    var strokeRates = calculateRates(sourceComp);
+    if (strokeRates.length > 0) {
+        var avgRate = strokeRates[strokeRates.length - 1].avgRate;
+        rateArray.push({
+            name: sourceComp.name,
+            avgRate: avgRate
+        });
+    }
+}
+
+if (rateArray.length >= 3) {
+    rateArray.sort(function(a, b) { return b.avgRate - a.avgRate });
+    medals[rateArray[0].name].push("medal_rate_1st");
+    medals[rateArray[1].name].push("medal_rate_2nd");
+    medals[rateArray[2].name].push("medal_rate_3rd");
+}
+
+for (var key in sourceComps) {
+    var sourceComp = sourceComps[key];
+    var strokeRates = calculateRates(sourceComp);
+    var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
+    var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2, strokeRates, medals);
+    var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
 }
 app.endUndoGroup();
 0;
