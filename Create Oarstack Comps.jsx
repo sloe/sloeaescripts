@@ -1,4 +1,42 @@
 ﻿
+"use strict";
+
+var rateLimitLow = 15;
+var rateLimitHigh = 50;
+
+function rateFromMarkers(markers) {
+    if (markers.numKeys < 2) {
+        $.writeln("Logic error in rateFromMarkers"); // Shouldn't be called with less than 2
+        return 99;
+    }
+    var rates = [];
+    for (var i = 1; i <= markers.numKeys - 1; i++) {
+        var startTime = markers.keyTime(i);
+        var endTime = markers.keyTime(i + 1);
+        if (startTime === endTime) {
+            $.writeln("Skipping duplicate markers");
+        } else {
+            var rate = 60.0 / (endTime - startTime);
+            if (rate < rateLimitLow || rate > rateLimitHigh) {
+                $.writeln("Skipping out of range rate: " + rate);
+            } else {
+                rates.push(rate);
+            }
+            $.writeln("Rate: " + rate);
+        }
+    }
+    if (rates.length < 1) {
+        $.writeln("Not enough valid markers to calculate rate");
+        return 99;
+    }
+    var avg_rate = 0;
+    for (var i = 0; i < rates.length; i++) {
+        avg_rate += rates[i];
+    }
+    avg_rate /= rates.length;
+    return avg_rate;
+}
+
 function createNewComp(sourceComp, templateComp, scaleFactor) {
     var newComp = sourceComp.duplicate();
     newComp.name = sourceComp.name.split(":")[2] + templateComp.name.split(":")[2];
@@ -21,6 +59,13 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
         sourceComp.layers[i].copyToComp(newComp);
     }
 
+    var strokeRates = [];
+    var strokeRateTimes = [];
+    if (sourceComp.markerProperty.numKeys > 1) {
+        strokeRates.push(rateFromMarkers(sourceComp.markerProperty));
+        strokeRateTimes.push(0.0);
+    }
+
     for (var i = 1; i <= newComp.layers.length; i++) {
         var newLayer = newComp.layers[i];
         var sourceLayer = sourceComp.layers[i];
@@ -28,7 +73,12 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
         //     "["+i+"]: inPoint "+sourceLayer.inPoint+" outPoint "+sourceLayer.outPoint+
         //     " startTime "+sourceLayer.startTime);
 
+        
         if (newLayer instanceof AVLayer) {
+
+
+            // Copy strecth value from the template's first layer
+            newLayer.stretch = templateComp.layers[1].stretch
             // startTime must be changed first, since it moves inPoint and outPoint when it's changed
             newLayer.startTime = sourceLayer.startTime * scaleFactor;
 
@@ -51,6 +101,11 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
 
             var effectsGroup = newLayer.property("Effects");
             newAVLayerEffects.push(effectsGroup);
+
+            if (sourceLayer.marker.numKeys > 1) {
+                strokeRates.push(rateFromMarkers(sourceLayer.marker));
+                strokeRateTimes.push(newLayer.inPoint);
+            }
         } else {
             // $.writeln("Layer not AVLayer");
         }
@@ -91,6 +146,9 @@ function createNewComp(sourceComp, templateComp, scaleFactor) {
         }
     }
 
+    if (strokeRates.length > 0) {
+        $.writeln("Stroke rates for " + newComp.name + " = " + strokeRates.join(", ") + ", times = " + strokeRateTimes.join(", "));
+    }
     return newComp;
 }
 
