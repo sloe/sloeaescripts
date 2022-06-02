@@ -92,8 +92,9 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
         if (newLayer instanceof AVLayer) {
 
 
-            // Copy strecth value from the template's first layer
-            newLayer.stretch = templateComp.layers[1].stretch
+            // Set stretched based on the scale factor.  It's in a layer in templateComp but we'd have to find it.
+            // Set this first as it changes later computations within AE
+            newLayer.stretch = 100 * scaleFactor;
             // startTime must be changed first, since it moves inPoint and outPoint when it's changed
             newLayer.startTime = sourceLayer.startTime * scaleFactor;
 
@@ -113,20 +114,44 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                     newLayer.outPoint = frontLayer.inPoint;
                 }
             }
-
-            var effectsGroup = newLayer.property("Effects");
-            newAVLayerEffects.push(effectsGroup);
-        } else {
-            // $.writeln("Layer not AVLayer");
         }
+        var effectsGroup = newLayer.property("Effects");
+        newAVLayerEffects.push(effectsGroup);
+
         // $.writeln("New: "+sourceComp.name+">"+templateComp.name.split(":")[1]+
         //     "["+i+"]*"+scaleFactor+": inPoint "+newLayer.inPoint+" outPoint "+newLayer.outPoint+
         //     " startTime "+newLayer.startTime);
     }
 
+    // We copy some properties from layers in the template to layers in newComp, matching
+    // up by the names of the layers
+    for (var i = 1; i <= templateComp.layers.length; i++) 
+    {
+        var templateLayer = templateComp.layers[i];
+        for (var j = 1; j <= newComp.layers.length; j++) {
+            var newLayer = newComp.layers[j];
+            if (templateLayer.name === newLayer.name) {
+                var templateProps = templateLayer.property("Audio");
+                var newProps = newLayer.property("Audio");
+
+                for (k = 1; k <= templateProps.numProperties; k++) {
+                    var templateProp = templateProps.property(k);
+                    var newProp = newProps.property(templateProp.name);
+        
+                    if (templateProp.propertyValueType !== PropertyValueType.NO_VALUE) {
+                        newProp.setValue(templateProp.value);
+                    }
+                }
+            }
+        }
+    }
+
     for (var i = 1; i <= templateComp.layers.length; i++) {
         var layer = templateComp.layers[i];
+
+        // Copy effects to new Comp
         var effectsGroup = layer.property("Effects");
+        // Not sure this works anymore
         for (j = 1; j <= effectsGroup.numProperties; j++) {
             var templateEffect = effectsGroup.property(j);
             for (var k = 0; k < newAVLayerEffects.length; k++) {
@@ -162,7 +187,9 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
             templateLayer.copyToComp(newComp);
             var newLayer = newComp.layer(1);
             var sourceText = newLayer.text.sourceText;
-            if (newLayer.name === "text_rate") {
+            if (newLayer.name === "text_crew_name") {
+                    newLayer.text.sourceText.setValueAtTime(0.0, newComp.name.replace(", Cambridge", "\nCambridge"));
+            } else if (newLayer.name === "text_rate") {
                 if (strokeRates.length == 0) {
                     newLayer.enabled = false;
                 } else {
@@ -173,13 +200,15 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                     newLayer.enabled = false;
                 } else {
                     for (var j = 0; j < strokeRates.length; j++) {
-                        var time = strokeRates[j].time
+                        var time = strokeRates[j].time * scaleFactor;
                         newLayer.text.sourceText.setValueAtTime(time, "Average " + strokeRates[j].avgRate.toFixed(2) + " from " + j + " stroke" + (j === 1 ? "" : "s"));
                     }
                 }
             } 
         } else {
-            if (medals[sourceComp.name].indexOf(templateLayer.name) >= 0) {   
+            if (templateLayer.name.substr(-4, 4) === ".wav") {
+                templateLayer.copyToComp(newComp);
+            } else if (medals[sourceComp.name].indexOf(templateLayer.name) >= 0) {   
                 templateLayer.copyToComp(newComp);
                 $.writeln("Copied layer " + templateLayer.name + " in Comp " + newComp.name);
             }
@@ -187,7 +216,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
     }
 
     if (strokeRates.length > 0) {
-        $.writeln("Stroke rates for " + newComp.name + " = " + strokeRates.map(function(x) {return x.spotRate}).join(", "));
+        // $.writeln("Stroke rates for " + newComp.name + " = " + strokeRates.map(function(x) {return x.spotRate}).join(", "));
     } else {
         $.writeln("Missing or faulty rate markers for " + newComp.name);
     }
@@ -254,8 +283,9 @@ for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
     var strokeRates = calculateRates(sourceComp);
     var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
-    var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2, strokeRates, medals);
-    var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
+    // var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2, strokeRates, medals);
+    // var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
+    var midSlowMotionComp = createNewComp(sourceComp, templateComps["midslow"], 4, strokeRates, medals);
 }
 app.endUndoGroup();
 0;
