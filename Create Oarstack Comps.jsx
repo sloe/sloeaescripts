@@ -207,6 +207,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
             var newLayer = newComp.layers[j];
             if (templateLayer.name === newLayer.name) {
                 if (newLayer instanceof AVLayer && newLayer.audioActive) {
+                    // Copy audio levels
                     var templateProps = templateLayer.property("Audio");
                     var newProps = newLayer.property("Audio");
 
@@ -221,6 +222,23 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                                 var keyTime = templateProp.keyTime(m);
                                 var keyValue = templateProp.keyValue(m);
                                 newProp.setValueAtTime(keyTime, keyValue);
+                            }
+                            // Fade audio levels before the end of the Comp
+                            if (templateProp.name === "Audio Levels") {
+                                var fadeStartPoint = Math.max(0, newWorkAreaEnd - 3);
+                                var fadeEndPoint = newWorkAreaEnd;
+                                var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
+                                var valueAtEnd = [-50, -50];
+
+                                if ((valueAtStart[0] > valueAtEnd[0]) || (valueAtStart[1] > valueAtEnd[1])) {
+                                    // It's loud enough that we need to fade
+                                    newProp.setValueAtTime(fadeStartPoint, valueAtStart);
+                                    newProp.setValueAtTime(fadeEndPoint, valueAtEnd);
+
+                                    var easeIn = new KeyframeEase(3, 33);
+                                    var fadeStartIndex = newProp.nearestKeyIndex(fadeStartPoint)
+                                    newProp.setTemporalEaseAtKey(fadeStartIndex, [easeIn, easeIn]);
+                                }
                             }
                         }
                     }
@@ -354,7 +372,7 @@ for (var key in templateComps) {
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
     var strokeRates = calculateRates(sourceComp);
-    var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
+    // var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
     // var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2, strokeRates, medals);
     // var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
     var midSlowMotionComp = createNewComp(sourceComp, templateComps["midslow"], 8, strokeRates, medals);
