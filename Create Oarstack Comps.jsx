@@ -217,6 +217,8 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
         for (var j = 1; j <= newComp.layers.length; j++) {
             var newLayer = newComp.layers[j];
             if (templateLayer.name === newLayer.name) {
+
+
                 if (newLayer instanceof AVLayer && newLayer.audioActive) {
                     // Copy audio levels
                     var templateProps = templateLayer.property("Audio");
@@ -259,44 +261,61 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                         }
                     }
                 }
-            }
-        }
-    }
 
-    for (var i = 1; i <= templateComp.layers.length; i++) {
-        var layer = templateComp.layers[i];
 
-        // Copy effects to new Comp
-        var effectsGroup = layer.property("Effects");
-        // Not sure this works anymore
-        for (j = 1; j <= effectsGroup.numProperties; j++) {
-            var templateEffect = effectsGroup.property(j);
-            for (var k = 0; k < newAVLayerEffects.length; k++) {
-                var destGroup = newAVLayerEffects[k];
-                var newEffect = destGroup.addProperty(templateEffect.name);
-                for (var l = 1; l <= templateEffect.numProperties; ++l) {
-                    var templateProp = templateEffect.property(l);
-                    if (templateProp.name == "Compositing Options") {
-                        // $.writeln("Not duplicating Compositing Options");
-                    } else if (templateProp instanceof Property) {
-                        if (templateProp.name === "Color Source") {
-                            // $.writeln("Overriding Color Source to " + (k+1));
-                            newEffect[templateProp.name].setValue(k + 1);
-                            // $.writeln(i+" "+j+" "+k+" "+l+" Added property "+templateProp.name+" to "+newEffect.name+" value "+templateProp.value+"="+newEffect[templateProp.name].value);
-                        } else if (templateProp.propertyValueType !== PropertyValueType.NO_VALUE) {
-                            newEffect[templateProp.name].setValue(templateProp.value);
-                            var newProp = newEffect[templateProp.name];
-                            // $.writeln(i+" "+j+" "+k+" "+l+" Added property "+templateProp.name+" to "+newEffect.name+" value "+templateProp.value+"="+newEffect[templateProp.name].value);
-                        } else {
-                            // $.writeln("Skipped no value property '"+templateProp.name+"' for "+newEffect.name);
+
+                if (newLayer instanceof AVLayer && newLayer.effectsActive) {
+                    var templateEffects = templateLayer.property("Effects");
+                    var newEffects = newLayer.property("Effects");
+
+                    for (var k = 1; k <= templateEffects.numProperties; k++) {
+                        var effectName = templateEffects.property(k).name;
+                        var templateProps = templateEffects.property(effectName);
+                        var newProps = newEffects.property(effectName);
+                        if (!newProps) {
+                            newProps = newEffects.addProperty(effectName);
                         }
-                    } else {
-                        // $.writeln("Unknown property type: "+templateProp.type);
+
+                        for (var m = 1; m <= templateProps.numProperties; m++) {
+                            var templateProp = templateProps.property(m);
+                            var newProp = newProps.property(templateProp.name);
+                            if (templateProp.name == "Compositing Options") {
+                                // $.writeln("Not duplicating Compositing Options");
+                            } else if (templateProp.propertyValueType === PropertyValueType.CUSTOM_VALUE) {
+                                // $.writeln("Not duplicating custom value");
+                            } else if (templateProp.propertyValueType !== PropertyValueType.NO_VALUE) {
+                                $.writeln(templateProp.name);
+                                // There's a bunch more to copy here (see newProp.reflect.methods) but we'll add them as we need them
+                                newProp.setValue(templateProp.value);
+                                for (var n = 1; n <= templateProp.numKeys; n++) {
+                                    var keyTime = templateProp.keyTime(n);
+                                    var keyValue = templateProp.keyValue(n);
+                                    newProp.setValueAtTime(keyTime, keyValue);
+                                }
+
+                                if (templateProp.name === "Saturation") {
+                                    // Fade to monochrome
+                                    var fadeDuration = 20; // seconds
+                                    var fadeStartPoint = Math.max(0, newWorkAreaEnd - fadeDuration);
+                                    var fadeEndPoint = newWorkAreaEnd - fadeDuration / 2;
+                                    var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
+                                    var valueAtEnd = -100;
+
+                                    newProp.setValueAtTime(fadeStartPoint, valueAtStart);
+                                    newProp.setValueAtTime(fadeEndPoint, valueAtEnd);
+
+                                    // var easeIn = new KeyframeEase(0, 75);
+                                    // var fadeStartIndex = newProp.nearestKeyIndex(fadeStartPoint)
+                                    // newProp.setTemporalEaseAtKey(fadeStartIndex, [easeIn, easeIn]);
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+
 
     if (strokeRates.length > 0) {
         // $.writeln("Stroke rates for " + newComp.name + " = " + strokeRates.map(function(x) {return x.spotRate}).join(", "));
@@ -394,7 +413,7 @@ for (var key in templateComps) {
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
     var strokeRates = g_strokeRates[sourceComp.name];
-    var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
+    // var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
     // var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2, strokeRates, medals);
     // var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
     var midSlowMotionComp = createNewComp(sourceComp, templateComps["midslow"], 8, strokeRates, medals);
