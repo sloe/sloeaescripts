@@ -4,20 +4,28 @@
 var rateLimitLow = 15;
 var rateLimitHigh = 50;
 
+var g_rateArray = [];
+var g_strokeRates = {};
 var g_templateMusic = {};
 var g_musicRegexp = /\.(wav|mp3)$/;
+
+function getNumberWithOrdinal(n) {
+    var s = ["th", "st", "nd", "rd"];
+    var v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
 
 function selectMusicForComp(templateName, sourceName, newCompName, compOutPoint) {
     var currentMusic = undefined;
     var currentCredit = -100;
-    for (var i=0; i < g_templateMusic[templateName].length; i++) {
+    for (var i = 0; i < g_templateMusic[templateName].length; i++) {
         var music = g_templateMusic[templateName][i];
         // Generate a repeateable pseudorandom number to add to the credit value
         var hashValue = 0;
         var hashSource = templateName + newCompName + music.name + compOutPoint.toFixed(1);
         for (var j = 0; j < hashSource.length; j++) {
-            var chr   = hashSource.charCodeAt(j);
-            hashValue  = ((hashValue << 5) - hashValue) + chr;
+            var chr = hashSource.charCodeAt(j);
+            hashValue = ((hashValue << 5) - hashValue) + chr;
             hashValue |= 0;
         }
 
@@ -176,13 +184,16 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                 } else {
                     newLayer.text.sourceText.setValueAtTime(0.0, strokeRates[strokeRates.length - 1].avgRate.toFixed(2));
                 }
-            } else if (newLayer.name === "text_rate_subtitle") {
+            } else if (newLayer.name.substr(0, 18) === "text_rate_subtitle") {
                 if (strokeRates.length == 0) {
                     newLayer.enabled = false;
                 } else {
-                    for (var j = 0; j < strokeRates.length; j++) {
-                        var time = strokeRates[j].time * scaleFactor;
-                        newLayer.text.sourceText.setValueAtTime(time, "Average " + strokeRates[j].avgRate.toFixed(2) + " from " + j + " stroke" + (j === 1 ? "" : "s"));
+                    newLayer.text.sourceText.setValueAtTime(0.0, getNumberWithOrdinal(strokeRates.placement) + " highest stroke rate from " + g_rateArray.length);
+                    if (newLayer.name === "text_rate_subtitle_slow") {
+                        for (var j = 0; j < strokeRates.length; j++) {
+                            var time = strokeRates[j].time * scaleFactor;
+                            newLayer.text.sourceText.setValueAtTime(time, "Average " + strokeRates[j].avgRate.toFixed(2) + " from " + j + " stroke" + (j === 1 ? "" : "s"));
+                        }
                     }
                 }
             }
@@ -223,19 +234,24 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                                 var keyValue = templateProp.keyValue(m);
                                 newProp.setValueAtTime(keyTime, keyValue);
                             }
+                            if (templateProp.numKeys == 0) {
+                                // Adds at least one key so the bezier in the fade works
+                                // newProp.setValueAtTime(0, templateProp.value);
+                            }
                             // Fade audio levels before the end of the Comp
                             if (templateProp.name === "Audio Levels") {
-                                var fadeStartPoint = Math.max(0, newWorkAreaEnd - 3);
+                                var fadeDuration = 8; // seconds
+                                var fadeStartPoint = Math.max(0, newWorkAreaEnd - fadeDuration);
                                 var fadeEndPoint = newWorkAreaEnd;
                                 var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
-                                var valueAtEnd = [-50, -50];
+                                var valueAtEnd = [-60, -60];
 
                                 if ((valueAtStart[0] > valueAtEnd[0]) || (valueAtStart[1] > valueAtEnd[1])) {
                                     // It's loud enough that we need to fade
                                     newProp.setValueAtTime(fadeStartPoint, valueAtStart);
                                     newProp.setValueAtTime(fadeEndPoint, valueAtEnd);
 
-                                    var easeIn = new KeyframeEase(3, 33);
+                                    var easeIn = new KeyframeEase(0, 75);
                                     var fadeStartIndex = newProp.nearestKeyIndex(fadeStartPoint)
                                     newProp.setTemporalEaseAtKey(fadeStartIndex, [easeIn, easeIn]);
                                 }
@@ -325,25 +341,31 @@ app.endUndoGroup();
 app.beginUndoGroup("oarstackCreate")
 medals = {};
 
-var rateArray = [];
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
     medals[sourceComp.name] = [];
     var strokeRates = calculateRates(sourceComp);
     if (strokeRates.length > 0) {
         var avgRate = strokeRates[strokeRates.length - 1].avgRate;
-        rateArray.push({
+        g_rateArray.push({
             name: sourceComp.name,
             avgRate: avgRate
         });
     }
+    g_strokeRates[sourceComp.name] = strokeRates;
 }
 
-if (rateArray.length >= 3) {
-    rateArray.sort(function (a, b) { return b.avgRate - a.avgRate });
-    medals[rateArray[0].name].push("medal_rate_1st");
-    medals[rateArray[1].name].push("medal_rate_2nd");
-    medals[rateArray[2].name].push("medal_rate_3rd");
+g_rateArray.sort(function (a, b) { return b.avgRate - a.avgRate });
+
+for (var i = 0; i < g_rateArray.length; i++) {
+    g_strokeRates[g_rateArray[i].name].placement = i + 1;
+}
+
+// Award rate medals if we have three or more entries
+if (g_rateArray.length >= 3) {
+    medals[g_rateArray[0].name].push("medal_rate_1st");
+    medals[g_rateArray[1].name].push("medal_rate_2nd");
+    medals[g_rateArray[2].name].push("medal_rate_3rd");
 }
 
 
@@ -371,8 +393,8 @@ for (var key in templateComps) {
 
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
-    var strokeRates = calculateRates(sourceComp);
-    // var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
+    var strokeRates = g_strokeRates[sourceComp.name];
+    var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
     // var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2, strokeRates, medals);
     // var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
     var midSlowMotionComp = createNewComp(sourceComp, templateComps["midslow"], 8, strokeRates, medals);
@@ -382,7 +404,7 @@ app.endUndoGroup();
 for (var key in templateComps) {
     var templateName = templateComps[key].name;
     $.writeln("Template name " + templateName);
-    for (var i=0; i < g_templateMusic[templateName].length; i++) {
+    for (var i = 0; i < g_templateMusic[templateName].length; i++) {
         var music = g_templateMusic[templateName][i];
         $.writeln("  Music " + music.name + " use count " + music.useCount);
     }
