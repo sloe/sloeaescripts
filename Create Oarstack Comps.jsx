@@ -110,8 +110,6 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
 
     newComp.frameRate = templateComp.frameRate;
 
-    var newAVLayerEffects = [];
-
     // Remove and duplicate layers
     for (var i = newComp.layers.length; i >= 1; i--) {
         newComp.layers[i].remove();
@@ -128,10 +126,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
         //     "["+i+"]: inPoint "+sourceLayer.inPoint+" outPoint "+sourceLayer.outPoint+
         //     " startTime "+sourceLayer.startTime);
 
-
         if (newLayer instanceof AVLayer) {
-
-
             // Set stretched based on the scale factor.  It's in a layer in templateComp but we'd have to find it.
             // Set this first as it changes later computations within AE
             newLayer.stretch = 100 * scaleFactor;
@@ -155,8 +150,6 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                 }
             }
         }
-        var effectsGroup = newLayer.property("Effects");
-        newAVLayerEffects.push(effectsGroup);
 
         // $.writeln("New: "+sourceComp.name+">"+templateComp.name.split(":")[1]+
         //     "["+i+"]*"+scaleFactor+": inPoint "+newLayer.inPoint+" outPoint "+newLayer.outPoint+
@@ -188,7 +181,11 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                 if (strokeRates.length == 0) {
                     newLayer.enabled = false;
                 } else {
-                    newLayer.text.sourceText.setValueAtTime(0.0, getNumberWithOrdinal(strokeRates.placement) + " highest stroke rate from " + g_rateArray.length);
+                    if (strokeRates.placement === 1) {
+                        newLayer.text.sourceText.setValueAtTime(0.0, "Highest stroke rate out of " + g_rateArray.length + " crews");
+                    } else {
+                        newLayer.text.sourceText.setValueAtTime(0.0, getNumberWithOrdinal(strokeRates.placement) + " highest stroke rate from " + g_rateArray.length);
+                    }
                     if (newLayer.name === "text_rate_subtitle_slow") {
                         for (var j = 0; j < strokeRates.length; j++) {
                             var time = strokeRates[j].time * scaleFactor;
@@ -263,7 +260,6 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                 }
 
 
-
                 if (newLayer instanceof AVLayer && newLayer.effectsActive) {
                     var templateEffects = templateLayer.property("Effects");
                     var newEffects = newLayer.property("Effects");
@@ -284,7 +280,6 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                             } else if (templateProp.propertyValueType === PropertyValueType.CUSTOM_VALUE) {
                                 // $.writeln("Not duplicating custom value");
                             } else if (templateProp.propertyValueType !== PropertyValueType.NO_VALUE) {
-                                $.writeln(templateProp.name);
                                 // There's a bunch more to copy here (see newProp.reflect.methods) but we'll add them as we need them
                                 newProp.setValue(templateProp.value);
                                 for (var n = 1; n <= templateProp.numKeys; n++) {
@@ -293,9 +288,9 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                                     newProp.setValueAtTime(keyTime, keyValue);
                                 }
 
-                                if (templateProp.name === "Saturation") {
+                                if (effectName === "Color Balance (HLS)" && templateProp.name === "Saturation") {
                                     // Fade to monochrome
-                                    var fadeDuration = 20; // seconds
+                                    var fadeDuration = 16; // seconds
                                     var fadeStartPoint = Math.max(0, newWorkAreaEnd - fadeDuration);
                                     var fadeEndPoint = newWorkAreaEnd - fadeDuration / 2;
                                     var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
@@ -303,10 +298,6 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
 
                                     newProp.setValueAtTime(fadeStartPoint, valueAtStart);
                                     newProp.setValueAtTime(fadeEndPoint, valueAtEnd);
-
-                                    // var easeIn = new KeyframeEase(0, 75);
-                                    // var fadeStartIndex = newProp.nearestKeyIndex(fadeStartPoint)
-                                    // newProp.setTemporalEaseAtKey(fadeStartIndex, [easeIn, easeIn]);
                                 }
                             }
                         }
@@ -322,6 +313,44 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
     } else {
         $.writeln("Missing or faulty rate markers for " + newComp.name);
     }
+
+    var folderName = "_" + templateComp.name.split(":")[1];
+    for (var i = 1; i <= app.project.numItems; i++) {
+        var item = app.project.items[i];
+        if ((item instanceof FolderItem) && (item.name == folderName)) {
+            newComp.parentFolder = item;
+        }
+    }
+    return newComp;
+}
+
+function createMultiComp(templateComp, sourceComps) {
+    var newComp = templateComp.duplicate();
+    newComp.name = sourceComps[0].name;
+
+    // newComp.duration = sourceComp.duration * scaleFactor;
+    // newComp.workAreaStart = sourceComp.workAreaStart * scaleFactor;
+    // newComp.workAreaDuration = sourceComp.workAreaDuration * scaleFactor;
+    // var newWorkAreaEnd = newComp.workAreaStart + newComp.workAreaDuration;
+
+    newComp.frameRate = sourceComps[0].frameRate;
+
+    // Add sourceComps in reverse order, to get the right order in newComp
+    for (var i = sourceComps.length - 1; i >= 0; i--) {
+        var sourceComp = sourceComps[i];
+        var newLayer = newComp.layers.add(sourceComps[i]);
+    }
+
+    // Line everything up in time and trim any overlap
+    var nextStartTime = 0.0;
+    for (var i = 1; i <= newComp.layers.length; i++) {
+        var newLayer = newComp.layers[i];
+        var sourceComp = sourceComps[i - 1];
+        newLayer.startTime = nextStartTime;
+        newLayer.outPoint = nextStartTime + sourceComp.workAreaDuration;
+        nextStartTime += sourceComp.workAreaDuration;
+    }
+    newComp.workAreaDuration = nextStartTime;
     return newComp;
 }
 
@@ -351,13 +380,13 @@ for (var i = 1; i <= projItems.length; i++) {
     }
 }
 
-app.beginUndoGroup("oarstackDelete")
+app.beginUndoGroup("oarstackDelete");
 for (var i = 0; i < itemsToRemove.length; i++) {
     itemsToRemove[i].remove();
 }
 app.endUndoGroup();
 
-app.beginUndoGroup("oarstackCreate")
+app.beginUndoGroup("oarstackCreate");
 medals = {};
 
 for (var key in sourceComps) {
@@ -409,15 +438,25 @@ for (var key in templateComps) {
     g_templateMusic[templateComp.name] = musicForTemplate;
 }
 
+multiComps = []
 
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
     var strokeRates = g_strokeRates[sourceComp.name];
-    // var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
+    var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
     // var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2, strokeRates, medals);
     // var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
     var midSlowMotionComp = createNewComp(sourceComp, templateComps["midslow"], 8, strokeRates, medals);
+    multiComps.push([fullSpeedComp, midSlowMotionComp]);
 }
+
+app.endUndoGroup();
+app.beginUndoGroup("oarstackMultiComps");
+
+for (var i = 0; i < multiComps.length; i++) {
+    var multiComp = createMultiComp(templateComps["multicomp"], multiComps[i]);
+}
+
 app.endUndoGroup();
 
 for (var key in templateComps) {
