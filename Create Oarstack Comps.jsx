@@ -109,6 +109,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
     var newWorkAreaEnd = newComp.workAreaStart + newComp.workAreaDuration;
 
     newComp.frameRate = templateComp.frameRate;
+    
 
     // Remove and duplicate layers
     for (var i = newComp.layers.length; i >= 1; i--) {
@@ -243,7 +244,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                                 var fadeStartPoint = Math.max(0, newWorkAreaEnd - fadeDuration);
                                 var fadeEndPoint = newWorkAreaEnd;
                                 var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
-                                var valueAtEnd = [-60, -60];
+                                var valueAtEnd = [-40, -40];
 
                                 if ((valueAtStart[0] > valueAtEnd[0]) || (valueAtStart[1] > valueAtEnd[1])) {
                                     // It's loud enough that we need to fade
@@ -288,16 +289,28 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                                     newProp.setValueAtTime(keyTime, keyValue);
                                 }
 
-                                if (effectName === "Color Balance (HLS)" && templateProp.name === "Saturation") {
-                                    // Fade to monochrome
-                                    var fadeDuration = 16; // seconds
-                                    var fadeStartPoint = Math.max(0, newWorkAreaEnd - fadeDuration);
-                                    var fadeEndPoint = newWorkAreaEnd - fadeDuration / 2;
-                                    var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
-                                    var valueAtEnd = -100;
+                                if (effectName === "Color Balance (HLS)") {
+                                    if (templateProp.name === "Lightness") {
+                                        // Fade to monochrome
+                                        var fadeDuration = 16; // seconds
+                                        var fadeStartPoint = Math.max(0, newWorkAreaEnd - fadeDuration);
+                                        var fadeEndPoint = newWorkAreaEnd;
+                                        var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
+                                        var valueAtEnd = -30;
 
-                                    newProp.setValueAtTime(fadeStartPoint, valueAtStart);
-                                    newProp.setValueAtTime(fadeEndPoint, valueAtEnd);
+                                        newProp.setValueAtTime(fadeStartPoint, valueAtStart);
+                                        newProp.setValueAtTime(fadeEndPoint, valueAtEnd);
+                                    } else if (templateProp.name === "Saturation") {
+                                        // Fade to monochrome
+                                        var fadeDuration = 16; // seconds
+                                        var fadeStartPoint = Math.max(0, newWorkAreaEnd - fadeDuration);
+                                        var fadeEndPoint = newWorkAreaEnd - fadeDuration / 2;
+                                        var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
+                                        var valueAtEnd = -100;
+
+                                        newProp.setValueAtTime(fadeStartPoint, valueAtStart);
+                                        newProp.setValueAtTime(fadeEndPoint, valueAtEnd);
+                                    }
                                 }
                             }
                         }
@@ -326,7 +339,13 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
 
 function createMultiComp(templateComp, sourceComps) {
     var newComp = templateComp.duplicate();
-    newComp.name = sourceComps[0].name;
+    var match = /(.*)\s+\[/.exec(sourceComps[0].name);
+
+    if (match) {
+        newComp.name = match[1];
+    } else {
+        newComp.name = sourceComps[0].name;
+    }
 
     // newComp.duration = sourceComp.duration * scaleFactor;
     // newComp.workAreaStart = sourceComp.workAreaStart * scaleFactor;
@@ -351,6 +370,13 @@ function createMultiComp(templateComp, sourceComps) {
         nextStartTime += sourceComp.workAreaDuration;
     }
     newComp.workAreaDuration = nextStartTime;
+
+    if (newComp.workAreaDuration > 180 && newComp.frameRate > 31) {
+        $.writeln("Dropping MultiComp " + newComp.name + " from " + newComp.frameRate.toFixed(2) + "fps to " +
+            (sourceComps[0].frameRate / 2).toFixed(2) + "fps due to length (" + newComp.workAreaDuration.toFixed(2) +"s)");
+        newComp.frameRate = sourceComps[0].frameRate / 2;
+    }
+
     return newComp;
 }
 
@@ -438,23 +464,24 @@ for (var key in templateComps) {
     g_templateMusic[templateComp.name] = musicForTemplate;
 }
 
-multiComps = []
+var multiComps = [];
 
 for (var key in sourceComps) {
     var sourceComp = sourceComps[key];
     var strokeRates = g_strokeRates[sourceComp.name];
     var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
-    // var primaryComp = createNewComp(sourceComp, templateComps["legacy"], 2, strokeRates, medals);
-    // var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
-    var midSlowMotionComp = createNewComp(sourceComp, templateComps["midslow"], 8, strokeRates, medals);
-    multiComps.push([fullSpeedComp, midSlowMotionComp]);
+    var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
+    multiComps.push([fullSpeedComp, slowMotionComp]);
 }
 
 app.endUndoGroup();
 app.beginUndoGroup("oarstackMultiComps");
 
+var renderableComps = [];
+
 for (var i = 0; i < multiComps.length; i++) {
     var multiComp = createMultiComp(templateComps["multicomp"], multiComps[i]);
+    renderableComps.push(multiComp);
 }
 
 app.endUndoGroup();
@@ -468,4 +495,19 @@ for (var key in templateComps) {
     }
 }
 
+var scratchDir = "D:\\scratch\\aerender"
+var outputDir = "D:\\scratch\\output"
+
+$.writeln('$env:PATH += ";C:\\Program Files\\Adobe\\Adobe After Effects 2022\\Support Files;C:\\Program Files\\Handbrake\\"');
+for (var i = 0; i < renderableComps.length; i++) {
+    var renderableName = renderableComps[i].name;
+    var projectFile = app.project.file.fsName;
+    var scratchFile = scratchDir + "\\" + renderableName + " prores.mov";
+    var outputFile = outputDir + "\\" + renderableName + ".mp4";
+
+    $.writeln('aerender -project "' + projectFile + '" -comp "' + renderableName + '" -output "' + scratchFile + '" -RStemplate "Best Settings" -OMtemplate "Sloe ProRes" -mem_usage 1 99 -mfr ON 100 -sound ON');
+    // Can add -NoNewWindow to the below for debugging
+    $.writeln('Start-Process -FilePath "HandbrakeCLI.exe" -ArgumentList "-i `"' + scratchFile + '`" -o `"' + outputFile + '`" --encoder nvenc_h265 --encoder-preset quality --vb 20000 --ab 320 --two-pass"');
+
+}
 0;
