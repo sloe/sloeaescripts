@@ -101,7 +101,8 @@ function calculateRates(sourceComp) {
 
 function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
     var newComp = sourceComp.duplicate();
-    newComp.name = sourceComp.name.split(":")[2] + templateComp.name.split(":")[2];
+    var crewTitle = sourceComp.name.split(":")[2] + templateComp.name.split(":")[2];
+    newComp.name =  templateComp.name.split(":")[1] + ":" + crewTitle;
 
     newComp.duration = sourceComp.duration * scaleFactor;
     newComp.workAreaStart = sourceComp.workAreaStart * scaleFactor;
@@ -109,7 +110,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
     var newWorkAreaEnd = newComp.workAreaStart + newComp.workAreaDuration;
 
     newComp.frameRate = templateComp.frameRate;
-    
+
 
     // Remove and duplicate layers
     for (var i = newComp.layers.length; i >= 1; i--) {
@@ -157,7 +158,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
         //     " startTime "+newLayer.startTime);
     }
 
-    var music = selectMusicForComp(templateComp.name, sourceComp.name, newComp.name, newWorkAreaEnd);
+    var music = selectMusicForComp(templateComp.name, sourceComp.name, crewTitle, newWorkAreaEnd);
     var musicName = undefined;
     if (music) {
         musicName = music.name;
@@ -171,7 +172,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
             var newLayer = newComp.layer(1);
             var sourceText = newLayer.text.sourceText;
             if (newLayer.name === "text_crew_name") {
-                newLayer.text.sourceText.setValueAtTime(0.0, newComp.name.replace(", Cambridge", "\nCambridge"));
+                newLayer.text.sourceText.setValueAtTime(0.0, crewTitle.replace(", Cambridge", "\nCambridge"));
             } else if (newLayer.name === "text_rate") {
                 if (strokeRates.length == 0) {
                     newLayer.enabled = false;
@@ -292,7 +293,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                                 if (effectName === "Color Balance (HLS)") {
                                     if (templateProp.name === "Lightness") {
                                         // Fade to monochrome
-                                        var fadeDuration = 16; // seconds
+                                        var fadeDuration = 20; // seconds
                                         var fadeStartPoint = Math.max(0, newWorkAreaEnd - fadeDuration);
                                         var fadeEndPoint = newWorkAreaEnd;
                                         var valueAtStart = newProp.valueAtTime(fadeStartPoint, false);
@@ -339,13 +340,8 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
 
 function createMultiComp(templateComp, sourceComps) {
     var newComp = templateComp.duplicate();
-    var match = /(.*)\s+\[/.exec(sourceComps[0].name);
 
-    if (match) {
-        newComp.name = match[1];
-    } else {
-        newComp.name = sourceComps[0].name;
-    }
+    newComp.name = sourceComps[0].name.split(":")[1];
 
     // newComp.duration = sourceComp.duration * scaleFactor;
     // newComp.workAreaStart = sourceComp.workAreaStart * scaleFactor;
@@ -373,7 +369,7 @@ function createMultiComp(templateComp, sourceComps) {
 
     if (newComp.workAreaDuration > 180 && newComp.frameRate > 31) {
         $.writeln("Dropping MultiComp " + newComp.name + " from " + newComp.frameRate.toFixed(2) + "fps to " +
-            (sourceComps[0].frameRate / 2).toFixed(2) + "fps due to length (" + newComp.workAreaDuration.toFixed(2) +"s)");
+            (sourceComps[0].frameRate / 2).toFixed(2) + "fps due to length (" + newComp.workAreaDuration.toFixed(2) + "s)");
         newComp.frameRate = sourceComps[0].frameRate / 2;
     }
 
@@ -382,6 +378,7 @@ function createMultiComp(templateComp, sourceComps) {
 
 
 var sourceComps = {};
+var sourceCompNames = [];
 var templateComps = {};
 var itemsToRemove = [];
 var projItems = app.project.items;
@@ -400,11 +397,14 @@ for (var i = 1; i <= projItems.length; i++) {
 
         } else if (item.name.indexOf('::') == 3) {
             sourceComps[item.name] = item;
+            sourceCompNames.push(item.name);
         } else {
             itemsToRemove.push(item);
         }
     }
 }
+
+sourceCompNames.sort();
 
 app.beginUndoGroup("oarstackDelete");
 for (var i = 0; i < itemsToRemove.length; i++) {
@@ -415,8 +415,8 @@ app.endUndoGroup();
 app.beginUndoGroup("oarstackCreate");
 medals = {};
 
-for (var key in sourceComps) {
-    var sourceComp = sourceComps[key];
+for (var i=0; i < sourceCompNames.length; i++) {
+    var sourceComp = sourceComps[sourceCompNames[i]];
     medals[sourceComp.name] = [];
     var strokeRates = calculateRates(sourceComp);
     if (strokeRates.length > 0) {
@@ -466,8 +466,8 @@ for (var key in templateComps) {
 
 var multiComps = [];
 
-for (var key in sourceComps) {
-    var sourceComp = sourceComps[key];
+for (var i=0; i < sourceCompNames.length; i++) {
+    var sourceComp = sourceComps[sourceCompNames[i]];
     var strokeRates = g_strokeRates[sourceComp.name];
     var fullSpeedComp = createNewComp(sourceComp, templateComps["fullspeed"], 1, strokeRates, medals);
     var slowMotionComp = createNewComp(sourceComp, templateComps["slowmotion"], 8, strokeRates, medals);
@@ -495,19 +495,23 @@ for (var key in templateComps) {
     }
 }
 
-var scratchDir = "D:\\scratch\\aerender"
-var outputDir = "D:\\scratch\\output"
+var scratchDir = "G:\\scratch_g\\ae render";
+var outputDir = "D:\\scratch\\ae output";
+var projectDir = app.project.file.parent.fsName;
 
 $.writeln('$env:PATH += ";C:\\Program Files\\Adobe\\Adobe After Effects 2022\\Support Files;C:\\Program Files\\Handbrake\\"');
+$.writeln('$outputDir = "' + outputDir + '"');
+$.writeln('$projDir = "' + projectDir + '"');
+$.writeln('$scratchDir = "' + scratchDir + '"');
 for (var i = 0; i < renderableComps.length; i++) {
     var renderableName = renderableComps[i].name;
-    var projectFile = app.project.file.fsName;
-    var scratchFile = scratchDir + "\\" + renderableName + " prores.mov";
-    var outputFile = outputDir + "\\" + renderableName + ".mp4";
+    var projectLeafname = app.project.file.name;
+    var scratchFile = renderableName + " prores.mov";
+    var outputFile = renderableName + ".mp4";
 
-    $.writeln('aerender -project "' + projectFile + '" -comp "' + renderableName + '" -output "' + scratchFile + '" -RStemplate "Best Settings" -OMtemplate "Sloe ProRes" -mem_usage 1 99 -mfr ON 100 -sound ON');
-    // Can add -NoNewWindow to the below for debugging
-    $.writeln('Start-Process -FilePath "HandbrakeCLI.exe" -ArgumentList "-i `"' + scratchFile + '`" -o `"' + outputFile + '`" --encoder nvenc_h265 --encoder-preset quality --vb 20000 --ab 320 --two-pass"');
+    $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; If (-not (Test-Path $sf) -or (Get-Item $sf).length -lt 10MB) { aerender -project "$projDir\\' + projectLeafname + '" -comp "' + renderableName + '" -output $sf -RStemplate "Best Settings" -OMtemplate "Sloe ProRes" -mem_usage 1 99 -mfr ON 100 -sound ON -v ERRORS }');
+    // Can add -NoNewWindow to Start-Process below for debugging
+    $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; $of="$outputDir\\' + outputFile + '" ; If (-not (Test-Path $of) -or (Get-Item $of).length -lt 10MB) { Start-Process -FilePath "HandbrakeCLI.exe" -ArgumentList "-i `"$sf`" -o `"$of`" --encoder nvenc_h265 --encoder-preset quality --vb 20000 --ab 320 --two-pass --turbo" }');
 
 }
 0;
