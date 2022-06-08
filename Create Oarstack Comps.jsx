@@ -184,16 +184,16 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
                     newLayer.enabled = false;
                 } else {
                     if (strokeRates.placement === 1) {
-                        newLayer.text.sourceText.setValueAtTime(0.0, "Highest stroke rate out of " + g_rateArray.length + " crews");
+                        newLayer.text.sourceText.setValueAtTime(0.0, "Highest stroke rate\nout of " + g_rateArray.length + " crews");
                     } else {
-                        newLayer.text.sourceText.setValueAtTime(0.0, getNumberWithOrdinal(strokeRates.placement) + " highest stroke rate from " + g_rateArray.length);
+                        newLayer.text.sourceText.setValueAtTime(0.0, getNumberWithOrdinal(strokeRates.placement) + " highest stroke\nrate from " + g_rateArray.length + " crews");
                     }
-                    if (newLayer.name === "text_rate_subtitle_slow") {
-                        for (var j = 0; j < strokeRates.length; j++) {
-                            var time = strokeRates[j].time * scaleFactor;
-                            newLayer.text.sourceText.setValueAtTime(time, "Average " + strokeRates[j].avgRate.toFixed(2) + " from " + j + " stroke" + (j === 1 ? "" : "s"));
-                        }
-                    }
+                    // if (newLayer.name === "text_rate_subtitle_slow") {
+                    //     for (var j = 0; j < strokeRates.length; j++) {
+                    //         var time = strokeRates[j].time * scaleFactor;
+                    //         newLayer.text.sourceText.setValueAtTime(time, "Average " + strokeRates[j].avgRate.toFixed(2) + " from " + j + " stroke" + (j === 1 ? "" : "s"));
+                    //     }
+                    // }
                 }
             }
         } else if (templateLayer instanceof AVLayer) {
@@ -509,7 +509,7 @@ for (var i = 0; i < renderableComps.length; i++) {
     var scratchFile = renderableName + " prores.mov";
     var outputFile = renderableName + ".mp4";
 
-    $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; If (-not (Test-Path $sf) -or (Get-Item $sf).length -lt 10MB) { aerender -project "$projDir\\' + projectLeafname + '" -comp "' + renderableName + '" -output $sf -RStemplate "Best Settings" -OMtemplate "Sloe ProRes" -mem_usage 1 99 -mfr ON 100 -sound ON -v ERRORS }');
+    $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; If (-not (Test-Path $sf) -or (Get-Item $sf).length -lt 10MB) { aerender -project "$projDir\\' + projectLeafname + '" -comp "' + renderableName + '" -output $sf -RStemplate "Best Settings" -OMtemplate "Sloe ProRes" -mem_usage 1 99 -mfr ON 100 -sound ON}'); // -v ERRORS 
     // Can add -NoNewWindow to Start-Process below for debugging
     $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; $of="$outputDir\\' + outputFile + '" ; If (-not (Test-Path $of) -or (Get-Item $of).length -lt 10MB) { Start-Process -FilePath "HandbrakeCLI.exe" -ArgumentList "-i `"$sf`" -o `"$of`" --encoder nvenc_h265 --encoder-preset quality --vb 20000 --ab 320 --two-pass --turbo" }');
 
