@@ -341,7 +341,7 @@ function createNewComp(sourceComp, templateComp, scaleFactor, strokeRates) {
 function createMultiComp(templateComp, sourceComps) {
     var newComp = templateComp.duplicate();
 
-    newComp.name = sourceComps[0].name.split(":")[1];
+    newComp.name = sourceComps[0].name.split(":")[1] + " (slow motion)";
 
     // newComp.duration = sourceComp.duration * scaleFactor;
     // newComp.workAreaStart = sourceComp.workAreaStart * scaleFactor;
@@ -495,14 +495,17 @@ for (var key in templateComps) {
     }
 }
 
-var scratchDir = "G:\\scratch_g\\ae render";
-var outputDir = "D:\\scratch\\ae output";
+var subDir = app.project.file.name.split("-")[2];
+var scratchDir = "G:\\scratch_g\\ae render\\" + subDir;
+var outputDir = "D:\\scratch\\ae output\\" + subDir;
 var projectDir = app.project.file.parent.fsName;
 
 $.writeln('$env:PATH += ";C:\\Program Files\\Adobe\\Adobe After Effects 2022\\Support Files;C:\\Program Files\\Handbrake\\"');
 $.writeln('$outputDir = "' + outputDir + '"');
 $.writeln('$projDir = "' + projectDir + '"');
 $.writeln('$scratchDir = "' + scratchDir + '"');
+$.writeln('If (-not (Test-Path $scratchDir)) { New-Item $scratchDir -ItemType Directory }');
+$.writeln('If (-not (Test-Path $outputDir)) { New-Item $outputDir -ItemType Directory }');
 for (var i = 0; i < renderableComps.length; i++) {
     var renderableName = renderableComps[i].name;
     var projectLeafname = app.project.file.name;
@@ -511,7 +514,7 @@ for (var i = 0; i < renderableComps.length; i++) {
 
     $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; If (-not (Test-Path $sf) -or (Get-Item $sf).length -lt 10MB) { aerender -project "$projDir\\' + projectLeafname + '" -comp "' + renderableName + '" -output $sf -RStemplate "Best Settings" -OMtemplate "Sloe ProRes" -mem_usage 1 99 -mfr ON 100 -sound ON}'); // -v ERRORS 
     // Can add -NoNewWindow to Start-Process below for debugging
-    $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; $of="$outputDir\\' + outputFile + '" ; If (-not (Test-Path $of) -or (Get-Item $of).length -lt 10MB) { Start-Process -FilePath "HandbrakeCLI.exe" -ArgumentList "-i `"$sf`" -o `"$of`" --encoder nvenc_h265 --encoder-preset quality --vb 20000 --ab 320 --two-pass --turbo" }');
+    $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; $of="$outputDir\\' + outputFile + '" ; If ((Test-Path $sf) -and (-not (Test-Path $of) -or (Get-Item $of).length -lt 10MB)) { Start-Process -FilePath "HandbrakeCLI.exe" -ArgumentList "-i `"$sf`" -o `"$of`" --encoder nvenc_h265 --encoder-preset quality --vb 20000 --ab 320 --two-pass --turbo" }');
 
 }
 0;
