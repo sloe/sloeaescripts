@@ -514,7 +514,7 @@ for (var i = 0; i < renderableComps.length; i++) {
 
     $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; If (-not (Test-Path $sf) -or (Get-Item $sf).length -lt 10MB) { aerender -project "$projDir\\' + projectLeafname + '" -comp "' + renderableName + '" -output $sf -RStemplate "Best Settings" -OMtemplate "Sloe ProRes" -mem_usage 1 99 -mfr ON 100 -sound ON}'); // -v ERRORS 
     // Can add -NoNewWindow to Start-Process below for debugging
-    $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; $of="$outputDir\\' + outputFile + '" ; If ((Test-Path $sf) -and (-not (Test-Path $of) -or (Get-Item $of).length -lt 10MB)) { Start-Process -FilePath "HandbrakeCLI.exe" -ArgumentList "-i `"$sf`" -o `"$of`" --encoder nvenc_h265 --encoder-preset quality --vb 20000 --ab 320 --two-pass --turbo" }');
+    $.writeln('$sf="$scratchDir\\' + scratchFile + '" ; $of="$outputDir\\' + outputFile + '" ; If ((Test-Path $sf) -and (-not (Test-Path $of) -or (Get-Item $of).length -lt 10MB)) { Start-Process -FilePath "HandbrakeCLI.exe" -ArgumentList "-i `"$sf`" -o `"$of`" --encoder nvenc_h265 --encoder-preset quality --vb 35000 --ab 320 --two-pass --turbo" }');
 
 }
 0;
