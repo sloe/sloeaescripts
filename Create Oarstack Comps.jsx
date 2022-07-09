@@ -1,7 +1,7 @@
 ﻿
 "use strict";
 
-var rateLimitLow = 15;
+var rateLimitLow = 6;
 var rateLimitHigh = 50;
 
 var g_rateArray = [];
@@ -495,7 +495,7 @@ for (var key in templateComps) {
     }
 }
 
-var subDir = app.project.file.name.split("-")[2];
+var subDir = app.project.file.name.split("-")[2].replace(".aep", "");
 var scratchDir = "G:\\scratch_g\\ae render\\" + subDir;
 var outputDir = "D:\\scratch\\ae output\\" + subDir;
 var projectDir = app.project.file.parent.fsName;
